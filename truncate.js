@@ -16,7 +16,8 @@ var esprima = require('esprima'),
 	estraverse = require('estraverse'),
 	fs = require('fs'),
 	path = require('path'),
-	htmlparser = require('htmlparser');
+	htmlparser = require('htmlparser'),
+	url = require('url');
 
 function visit(root, emit) {
 	function process(nd, parent, idx) {
@@ -278,10 +279,10 @@ function walkDOM(node, baseurl, scripts) {
 		if (!node.attribs || !node.attribs.type || node.attribs.type.match(/JavaScript/i)) {
 			var script_code, script_path;
 			if (node.attribs && node.attribs.src) {
-				script_path = path.resolve(baseurl, node.attribs.src.trim());
+				script_path = url.parse(url.resolve(baseurl, node.attribs.src.trim())).pathname;
 				script_code = fs.readFileSync(script_path, 'utf-8');
 			} else {
-				script_path = baseurl + "/inline_" + (++inlinecnt) + ".js";
+				script_path = baseurl + "inline_" + (++inlinecnt) + ".js";
 				script_code = node.children[0].raw;
 			}
 			scripts.push({
@@ -306,7 +307,7 @@ function extract_js(file) {
 	var html = fs.readFileSync(file, 'utf-8');
 	var scripts = [];
 	HTMLparser.parseComplete(html);
-	walkDOM(handler.dom, path.dirname(file), scripts);
+	walkDOM(handler.dom, path.dirname(file) + '/', scripts);
 	return scripts;
 }
 
@@ -325,7 +326,9 @@ if (/\.js$/.test(file)) {
 		cnt = 0,
 		basename = path.basename(file, '.js');
 	visit(ast, function(trunc_ast, start_line, start_offset, end_offset) {
-		fs.writeFileSync(outdir + '/' + basename + '_truncated_' + (cnt++) + '.js', '// ' + file + '@' + start_line + ':' + start_offset + '-' + end_offset + '\n' + escodegen.generate(trunc_ast));
+		fs.writeFileSync(outdir + '/' + basename + '_truncated_' + (cnt++) + '.js',
+						 '// ' + file + '@' + start_line + ':' + start_offset + '-' + end_offset + '\n' +
+						 escodegen.generate(trunc_ast));
 	});
 } else if (/\.html?$/.test(file)) {
 	var scripts = extract_js(file),
@@ -342,9 +345,9 @@ if (/\.js$/.test(file)) {
 				cnt = 0;
 			visit(ast, function(trunc_ast, start_line, start_offset, end_offset) {
 				var trunc_name = outdir + '/' + basename + '_truncated_' + (cnt++) + '.js';
-				fs.writeFileSync(trunc_name,
-				escodegen.generate(trunc_ast));
-				var html = "<html>\n<head>\n<title></title>\n";
+				fs.writeFileSync(trunc_name, escodegen.generate(trunc_ast));
+				var html = "<!-- " + file + "@" + start_line + ":" + start_offset + "-" + end_offset + " -->\n" +
+					       "<html>\n<head>\n<title></title>\n";
 				scripts.forEach(function(script, j) {
 					if (i === j) {
 						html += "<script src='" + path.basename(trunc_name) + "'></script>\n";
