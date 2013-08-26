@@ -1,0 +1,17 @@
+{
+    "name": "truncate-prop-reads",
+    "version": "0.1.0",
+    "author": "Max Schaefer <schaefer@ntu.edu.sg>",
+    "description": "Utility for creating completion problems",
+    "dependencies" : {
+		"escodegen": "*",
+    	"esprima": "*",
+    	"estraverse": "*",
+    	"htmlparser": "*"
+    },
+    "repository": {
+    	"type" : "git",
+  		"url" : "https://github.com/xiemaisi/truncate-prop-reads.git"
+    },
+    "license": "Eclipse"
+}
