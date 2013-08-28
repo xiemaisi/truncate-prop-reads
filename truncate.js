@@ -9,7 +9,7 @@
  *     Max Schaefer - initial API and implementation
  *******************************************************************************/
 
-/*global require process*/
+/*global require process console*/
 
 var esprima = require('esprima'),
 	escodegen = require('escodegen'),
@@ -18,6 +18,29 @@ var esprima = require('esprima'),
 	path = require('path'),
 	htmlparser = require('htmlparser'),
 	url = require('url');
+	
+var frameworks_regexp = /^(jquery|mootools|prototype)/i,
+    usercode_regexp = null;
+    
+function usage() {
+	console.log("Usage: node truncate.js [--framework REGEXP] [--usercode REGEXP] FILE OUTDIR");
+	process.exit(-1);
+}
+    
+function isFramework(file) {
+	if(usercode_regexp) {
+		return !usercode_regexp.test(file);
+	} else {
+        return frameworks_regexp.test(file);
+    }
+}
+
+function parse(src) {
+	return esprima.parse(src, {
+		range: true,
+		loc: true
+	});
+}
 
 function visit(root, emit) {
 	function process(nd, parent, idx) {
@@ -311,54 +334,63 @@ function extract_js(file) {
 	return scripts;
 }
 
-// TODO: better way to check this?
-function isFramework(file) {
-        return (/^(jquery|mootools|prototype)/i).test(file);
+var i=2, nargs = process.argv.length;
+
+while((/^--/).test(process.argv[i])) {
+	var opt = process.argv[i++];
+	if(opt.length == 2) {
+		break;
+	} else if(i+1<nargs && opt === '--frameworks') {
+		frameworks_regexp = new RegExp(process.argv[i++]);
+	} else if(i+1<nargs && opt === '--usercode') {
+		usercode_regexp = new RegExp(process.argv[i++]);
+	} else {
+		usage();
+	}
 }
 
-var file = process.argv[2],
-	outdir = process.argv[3];
-if (/\.js$/.test(file)) {
-	var ast = esprima.parse(fs.readFileSync(process.argv[2], 'utf-8'), {
-		range: true,
-		loc: true
-	}),
-		cnt = 0,
-		basename = path.basename(file, '.js');
-	visit(ast, function(trunc_ast, start_line, start_offset, end_offset) {
-		fs.writeFileSync(outdir + '/' + basename + '_truncated_' + (cnt++) + '.js',
-						 '// ' + file + '@' + start_line + ':' + start_offset + '-' + end_offset + '\n' +
-						 escodegen.generate(trunc_ast));
-	});
-} else if (/\.html?$/.test(file)) {
-	var scripts = extract_js(file),
-		outer_cnt = 0;
-	scripts.forEach(function(script, i) {
-		var basename = path.basename(script.path, ".js"),
-			source = script.source;
-		fs.writeFileSync(outdir + '/' + basename + ".js", source);
-		if (!isFramework(basename)) {
-			var ast = esprima.parse(source, {
-				range: true,
-				loc: true
-			}),
-				cnt = 0;
-			visit(ast, function(trunc_ast, start_line, start_offset, end_offset) {
-				var trunc_name = outdir + '/' + basename + '_truncated_' + (cnt++) + '.js';
-				fs.writeFileSync(trunc_name, escodegen.generate(trunc_ast));
-				var html = "<!-- " + basename + ".js@" + start_line + ":" + start_offset + "-" + end_offset + " -->\n" +
-					       "<html>\n<head>\n<title></title>\n";
-				scripts.forEach(function(script, j) {
-					if (i === j) {
-						html += "<script src='" + path.basename(trunc_name) + "'></script>\n";
-					} else {
-						html += "<script src='" + path.basename(script.path) + "'></script>\n";
-					}
-				});
-				html += "</head>\n<body></body>\n</html>\n";
-				fs.writeFileSync(outdir + '/' + path.basename(file, '.html') + '_truncated_' + (outer_cnt++) + '.html',
-				html);
-			});
-		}
-	});
+if(i+1>=process.argv.length) {
+	usage();
 }
+
+var files = process.argv.slice(i, nargs-1),
+	outdir = process.argv[nargs-1];
+files.forEach(function(file) {
+	if (/\.js$/.test(file)) {
+		var src = fs.readFileSync(file, 'utf-8'),
+			ast = parse(src), cnt = 0, basename = path.basename(file, '.js');
+		fs.writeFileSync(outdir + '/' + basename + '.js', src);
+		visit(ast, function(trunc_ast, start_line, start_offset, end_offset) {
+			fs.writeFileSync(outdir + '/' + basename + '_truncated_' + (cnt++) + '.js',
+							 '// ' + file + '@' + start_line + ':' + start_offset + '-' + end_offset + '\n' +
+							 escodegen.generate(trunc_ast));
+		});
+	} else if (/\.html?$/.test(file)) {
+		var scripts = extract_js(file),
+			outer_cnt = 0;
+		scripts.forEach(function(script, i) {
+			var basename = path.basename(script.path, ".js"),
+				source = script.source;
+			fs.writeFileSync(outdir + '/' + basename + ".js", source);
+			if (!isFramework(basename)) {
+				var ast = parse(source), cnt = 0;
+				visit(ast, function(trunc_ast, start_line, start_offset, end_offset) {
+					var trunc_name = outdir + '/' + basename + '_truncated_' + (cnt++) + '.js';
+					fs.writeFileSync(trunc_name, escodegen.generate(trunc_ast));
+					var html = "<!-- " + basename + ".js@" + start_line + ":" + start_offset + "-" + end_offset + " -->\n" +
+						       "<html>\n<head>\n<title></title>\n";
+					scripts.forEach(function(script, j) {
+						if (i === j) {
+							html += "<script src='" + path.basename(trunc_name) + "'></script>\n";
+						} else {
+							html += "<script src='" + path.basename(script.path) + "'></script>\n";
+						}
+					});
+					html += "</head>\n<body></body>\n</html>\n";
+					fs.writeFileSync(outdir + '/' + path.basename(file, '.html') + '_truncated_' + (outer_cnt++) + '.html',
+					html);
+				});
+			}
+		});
+	}
+});
