@@ -313,7 +313,7 @@ function extract_js(file) {
 
 // TODO: better way to check this?
 function isFramework(file) {
-	return (/^(jquery|mootools|prototype|d3\.)/i).test(file);
+        return (/^(jquery|mootools|prototype)/i).test(file);
 }
 
 var file = process.argv[2],
@@ -346,7 +346,7 @@ if (/\.js$/.test(file)) {
 			visit(ast, function(trunc_ast, start_line, start_offset, end_offset) {
 				var trunc_name = outdir + '/' + basename + '_truncated_' + (cnt++) + '.js';
 				fs.writeFileSync(trunc_name, escodegen.generate(trunc_ast));
-				var html = "<!-- " + file + "@" + start_line + ":" + start_offset + "-" + end_offset + " -->\n" +
+				var html = "<!-- " + basename + ".js@" + start_line + ":" + start_offset + "-" + end_offset + " -->\n" +
 					       "<html>\n<head>\n<title></title>\n";
 				scripts.forEach(function(script, j) {
 					if (i === j) {
