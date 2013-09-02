@@ -355,42 +355,57 @@ if(i+1>=process.argv.length) {
 
 var files = process.argv.slice(i, nargs-1),
 	outdir = process.argv[nargs-1];
-files.forEach(function(file) {
-	if (/\.js$/.test(file)) {
-		var src = fs.readFileSync(file, 'utf-8'),
-			ast = parse(src), cnt = 0, basename = path.basename(file, '.js');
-		fs.writeFileSync(outdir + '/' + basename + '.js', src);
-		visit(ast, function(trunc_ast, start_line, start_offset, end_offset) {
-			fs.writeFileSync(outdir + '/' + basename + '_truncated_' + (cnt++) + '.js',
-							 '// ' + file + '@' + start_line + ':' + start_offset + '-' + end_offset + '\n' +
-							 escodegen.generate(trunc_ast));
-		});
-	} else if (/\.html?$/.test(file)) {
-		var scripts = extract_js(file),
-			outer_cnt = 0;
-		scripts.forEach(function(script, i) {
-			var basename = path.basename(script.path, ".js"),
-				source = script.source;
-			fs.writeFileSync(outdir + '/' + basename + ".js", source);
-			if (!isFramework(basename)) {
-				var ast = parse(source), cnt = 0;
+if ((/\.html?$/i).test(files[0])) {
+	var file = files[0],
+		scripts = extract_js(file),
+		outer_cnt = 0;
+	scripts.forEach(function(script, i) {
+		var basename = path.basename(script.path, ".js"),
+			source = script.source;
+		fs.writeFileSync(outdir + '/' + basename + ".js", source);
+		if (!isFramework(basename)) {
+			var ast = parse(source),
+				cnt = 0;
+			visit(ast, function(trunc_ast, start_line, start_offset, end_offset) {
+				var trunc_name = outdir + '/' + basename + '_truncated_' + (cnt++) + '.js';
+				fs.writeFileSync(trunc_name, escodegen.generate(trunc_ast));
+				var html = "<!-- " + basename + ".js@" + start_line + ":" + start_offset + "-" + end_offset + " -->\n" + "<html>\n<head>\n<title></title>\n";
+				scripts.forEach(function(script, j) {
+					if (i === j) {
+						html += "<script src='" + path.basename(trunc_name) + "'></script>\n";
+					} else {
+						html += "<script src='" + path.basename(script.path) + "'></script>\n";
+					}
+				});
+				html += "</head>\n<body></body>\n</html>\n";
+				fs.writeFileSync(outdir + '/' + path.basename(file, '.html') + '_truncated_' + (outer_cnt++) + '.html',
+				html);
+			});
+		}
+	});
+} else {
+	files.forEach(function(file, i) {
+		if (!/\.js$/.test(file)) {
+			console.warn("Ignoring non-JavaScript file " + file);
+		} else {
+			var src = fs.readFileSync(file, 'utf-8'),
+				ast = parse(src),
+				cnt = 0,
+				basename = path.basename(file, '.js');
+			if(!isFramework(basename)) {
 				visit(ast, function(trunc_ast, start_line, start_offset, end_offset) {
-					var trunc_name = outdir + '/' + basename + '_truncated_' + (cnt++) + '.js';
-					fs.writeFileSync(trunc_name, escodegen.generate(trunc_ast));
-					var html = "<!-- " + basename + ".js@" + start_line + ":" + start_offset + "-" + end_offset + " -->\n" +
-						       "<html>\n<head>\n<title></title>\n";
-					scripts.forEach(function(script, j) {
-						if (i === j) {
-							html += "<script src='" + path.basename(trunc_name) + "'></script>\n";
+					var this_outdir = outdir + '/' + basename + '_truncated_' + (cnt++),
+						src = '// ' + file + '@' + start_line + ':' + start_offset + '-' + end_offset + '\n' + escodegen.generate(trunc_ast);
+					fs.mkdirSync(this_outdir);
+					files.forEach(function(file, j) {
+						if(i === j) {
+							fs.writeFileSync(this_outdir + '/' + path.basename(file), src);
 						} else {
-							html += "<script src='" + path.basename(script.path) + "'></script>\n";
+							fs.writeFileSync(this_outdir + '/' + path.basename(file), fs.readFileSync(file));
 						}
 					});
-					html += "</head>\n<body></body>\n</html>\n";
-					fs.writeFileSync(outdir + '/' + path.basename(file, '.html') + '_truncated_' + (outer_cnt++) + '.html',
-					html);
 				});
 			}
-		});
-	}
-});
+		}
+	});
+}
